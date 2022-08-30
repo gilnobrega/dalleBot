@@ -7,7 +7,7 @@ use reqwest::{
 use serde_json::{json, Value};
 
 static DALLE_API_URL_TASKS: &str = "https://labs.openai.com/api/labs/tasks";
-static DALLE_API_URL_LOGIN: &str = "https://labs.openai.com/api/labs/auth/login";
+static DALLE_API_URL_CREDIT_SUMMARY: &str = "https://labs.openai.com/api/labs/billing/credit_summary";
 
 fn inpainting() {}
 
@@ -117,10 +117,9 @@ pub async fn get_credits(dalle_login_token: &str) -> Result<Option<u64>, ()> {
     let client = reqwest::Client::new();
 
     let resp_string = client
-    .post(DALLE_API_URL_LOGIN)
+    .get(DALLE_API_URL_CREDIT_SUMMARY)
     .header(AUTHORIZATION, format!("Bearer {}", dalle_login_token))
     .header(CONTENT_TYPE, "application/json")
-    .json(&json!({}))
     .send()
     .await
     .unwrap()
@@ -137,7 +136,7 @@ pub async fn get_credits(dalle_login_token: &str) -> Result<Option<u64>, ()> {
 
     println!("{:?}", resp_json);
 
-    let credits =resp_json["billing_info"]["aggregate_credits"].as_u64();
+    let credits =resp_json["aggregate_credits"].as_u64();
 
     Ok(credits)
 }

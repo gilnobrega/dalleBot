@@ -1,3 +1,2 @@
 export DISCORD_TOKEN=
 export DALLE_TOKEN=
-export DALLE_LOGIN_TOKEN=

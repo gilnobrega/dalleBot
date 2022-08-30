@@ -53,11 +53,12 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 #[command]
 async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let dalle_token = env::var("DALLE_TOKEN").expect("token");
-    msg.react(&ctx.http, '🤔').await.unwrap();
+    let thinking_reaction = '🤔';
+    msg.react(&ctx.http, thinking_reaction).await.unwrap();
 
     match &crate::dalle_api::text2img(args.message(), &dalle_token).await {
         Ok(response) => {
-            msg.delete_reaction_emoji(&ctx.http, '🤔').await.unwrap();
+            msg.delete_reaction_emoji(&ctx.http, thinking_reaction).await.unwrap();
 
             download_and_send_images(response, ctx, msg).await;
 
@@ -66,7 +67,7 @@ async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             (fut1.await.unwrap(), fut2.await.unwrap());
         }
         Err(_) => {
-            let fut1 = msg.delete_reaction_emoji(&ctx.http, '🤔');
+            let fut1 = msg.delete_reaction_emoji(&ctx.http, thinking_reaction);
             let fut2 = msg.react(&ctx.http, '🔴');
             (fut1.await.unwrap(), fut2.await.unwrap());
         }
@@ -77,19 +78,17 @@ async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 }
 
 async fn download_and_send_images(response: &Value, ctx: &Context, msg: &Message) {
-    msg.react(&ctx.http, "⬇️".chars().last().unwrap()).await.unwrap();
-
     let urls = get_response_image_urls(response).await;
 
-    let emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"];
+    let emojis = ['🌑', '🌘', '🌗', '🌖', '🌕'];
     
-    for emoji in emojis {
-        msg.react(&ctx.http, emoji.chars().last().unwrap()).await.unwrap();
-    }
+    msg.react(&ctx.http, emojis[0]).await.unwrap();
 
     for (i, url) in urls.iter().enumerate() {
 
         let download = reqwest::get(url).await.unwrap().bytes().await.unwrap();
+        msg.delete_reaction_emoji(&ctx.http, emojis[i]).await.unwrap();
+        msg.react(&ctx.http, emojis[i+1]).await.unwrap();
 
         let f = [(&download[..], "image.png")];
 
@@ -111,17 +110,16 @@ async fn download_and_send_images(response: &Value, ctx: &Context, msg: &Message
             })
             .await.unwrap();
         
-            msg.delete_reaction_emoji(&ctx.http, emojis[i].chars().last().unwrap()).await.unwrap();
     }
 
-    msg.delete_reaction_emoji(&ctx.http, "⬇️".chars().last().unwrap()).await.unwrap();
+    msg.delete_reaction_emoji(&ctx.http, emojis[4]).await.unwrap();
 }
 
 #[command]
 async fn credits(ctx: &Context, msg: &Message) -> CommandResult
 {
-    let dalle_login_token = env::var("DALLE_LOGIN_TOKEN").expect("token");
-    match get_credits(&dalle_login_token).await {
+    let dalle_token = env::var("DALLE_TOKEN").expect("token");
+    match get_credits(&dalle_token).await {
         Ok(val) => match val {
             Some(val) => {
                 msg.reply(ctx, format!("{} credits left", val)).await.unwrap();
