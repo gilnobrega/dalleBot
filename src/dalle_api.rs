@@ -1,14 +1,13 @@
 use core::time;
 use std::thread;
-
-use bytes::Bytes;
 use reqwest::{
     self,
     header::{AUTHORIZATION, CONTENT_TYPE},
 };
 use serde_json::{json, Value};
 
-static DALLE_API_URL: &str = "https://labs.openai.com/api/labs/tasks";
+static DALLE_API_URL_TASKS: &str = "https://labs.openai.com/api/labs/tasks";
+static DALLE_API_URL_LOGIN: &str = "https://labs.openai.com/api/labs/auth/login";
 
 fn inpainting() {}
 
@@ -35,7 +34,7 @@ async fn get_task_response<'a>(
 
     let client = reqwest::Client::new();
     let resp_string = client
-        .post(DALLE_API_URL)
+        .post(DALLE_API_URL_TASKS)
         .header(AUTHORIZATION, format!("Bearer {}", dalle_token))
         .header(CONTENT_TYPE, "application/json")
         .json(&body)
@@ -72,7 +71,7 @@ async fn get_task_response<'a>(
 
         let resp_json: Value = match serde_json::from_str(&resp_string) {
             Ok(val) => val,
-            Err(err) => {
+            Err(_) => {
                 continue;
             }
         };
@@ -82,7 +81,7 @@ async fn get_task_response<'a>(
             break Ok(resp_json);
         }
 
-        if resp_json["status"] == "rejected" {
+        if resp_json["status"] != "pending" {
             break Err(());
         }
     };
@@ -92,7 +91,7 @@ async fn get_task_response<'a>(
     final_data
 }
 
-pub async fn download_response_image(response: &Value) -> Vec<Bytes> {
+pub async fn get_response_image_urls(response: &Value) -> Vec<String> {
     let mut vec = Vec::new();
 
     let array = response["generations"].as_object().unwrap()["data"]
@@ -108,13 +107,37 @@ pub async fn download_response_image(response: &Value) -> Vec<Bytes> {
             .to_string()
             .replace("\"", "");
 
-        println!("Url is {:?}", url);
-
-        //let img_bytes = reqwest::get("https://cdn.openai.com/labs/images/A%20Shiba%20Inu%20dog%20wearing%20a%20beret%20and%20black%20turtleneck.webp?v=1")
-        let img_bytes = reqwest::get(url).await.unwrap().bytes().await.unwrap();
-
-        vec.push(img_bytes);
+        vec.push(url);
     }
 
     vec
+}
+
+pub async fn get_credits(dalle_login_token: &str) -> Result<Option<u64>, ()> {
+    let client = reqwest::Client::new();
+
+    let resp_string = client
+    .post(DALLE_API_URL_LOGIN)
+    .header(AUTHORIZATION, format!("Bearer {}", dalle_login_token))
+    .header(CONTENT_TYPE, "application/json")
+    .json(&json!({}))
+    .send()
+    .await
+    .unwrap()
+    .text()
+    .await
+    .unwrap();
+
+    println!("{:?}", resp_string);
+
+    let resp_json: Value = match serde_json::from_str(&resp_string) {
+        Ok(val) => val,
+        Err(_) => return Err(())
+    };
+
+    println!("{:?}", resp_json);
+
+    let credits =resp_json["billing_info"]["aggregate_credits"].as_u64();
+
+    Ok(credits)
 }

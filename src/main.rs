@@ -1,5 +1,7 @@
-mod dalle;
+mod dalle_api;
 
+use dalle_api::get_credits;
+use serde_json::Value;
 use serenity::async_trait;
 use serenity::framework::standard::macros::{command, group};
 use serenity::framework::standard::Args;
@@ -8,11 +10,10 @@ use serenity::model::channel::Message;
 use serenity::prelude::*;
 use std::env;
 
-use crate::dalle::download_response_image;
+use crate::dalle_api::{get_response_image_urls};
 
 #[group]
-#[commands(ping)]
-#[commands(text2img)]
+#[commands(text2img, ping, credits)]
 struct General;
 
 struct Handler;
@@ -50,43 +51,89 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 }
 
 #[command]
-async fn text2img(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
+async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
     let dalle_token = env::var("DALLE_TOKEN").expect("token");
+    msg.react(&ctx.http, '🤔').await.unwrap();
 
-    match &crate::dalle::text2img(args.message(), &dalle_token).await {
+    match &crate::dalle_api::text2img(args.message(), &dalle_token).await {
         Ok(response) => {
-            let downloads = download_response_image(response).await;
+            msg.delete_reaction_emoji(&ctx.http, '🤔').await.unwrap();
 
-            for download in downloads {
-                let f = [(&download[..], "image.png")];
+            download_and_send_images(response, ctx, msg).await;
 
-                msg.channel_id
-                    .send_message(&ctx.http, |m| {
-                        // Reply to the given message
-                        m.reference_message(msg);
-
-                        // Ping the replied user
-                        m.allowed_mentions(|am| {
-                            am.replied_user(true);
-                            am
-                        });
-
-                        // Attach image
-                        m.files(f);
-
-                        m
-                    })
-                    .await?;
-            }
+            let fut1 = msg.react(&ctx.http, '🟢');
+            let fut2 = credits(&ctx, &msg, args);
+            (fut1.await.unwrap(), fut2.await.unwrap());
         }
-        Err(e) => {
-            msg.reply(
-                &ctx.http,
-                "Your task failed as a result of our safety system.",
-            )
-            .await?;
+        Err(_) => {
+            let fut1 = msg.delete_reaction_emoji(&ctx.http, '🤔');
+            let fut2 = msg.react(&ctx.http, '🔴');
+            (fut1.await.unwrap(), fut2.await.unwrap());
         }
     };
 
+
     Ok({})
+}
+
+async fn download_and_send_images(response: &Value, ctx: &Context, msg: &Message) {
+    msg.react(&ctx.http, "⬇️".chars().last().unwrap()).await.unwrap();
+
+    let urls = get_response_image_urls(response).await;
+
+    let emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣"];
+    
+    for emoji in emojis {
+        msg.react(&ctx.http, emoji.chars().last().unwrap()).await.unwrap();
+    }
+
+    for (i, url) in urls.iter().enumerate() {
+
+        let download = reqwest::get(url).await.unwrap().bytes().await.unwrap();
+
+        let f = [(&download[..], "image.png")];
+
+        msg.channel_id
+            .send_message(&ctx.http, |m| {
+                // Reply to the given message
+                m.reference_message(msg);
+
+                // Ping the replied user
+                m.allowed_mentions(|am| {
+                    am.replied_user(true);
+                    am
+                });
+
+                // Attach image
+                m.files(f);
+
+                m
+            })
+            .await.unwrap();
+        
+            msg.delete_reaction_emoji(&ctx.http, emojis[i].chars().last().unwrap()).await.unwrap();
+    }
+
+    msg.delete_reaction_emoji(&ctx.http, "⬇️".chars().last().unwrap()).await.unwrap();
+}
+
+#[command]
+async fn credits(ctx: &Context, msg: &Message) -> CommandResult
+{
+    let dalle_login_token = env::var("DALLE_LOGIN_TOKEN").expect("token");
+    match get_credits(&dalle_login_token).await {
+        Ok(val) => match val {
+            Some(val) => {
+                msg.reply(ctx, format!("{} credits left", val)).await.unwrap();
+            }
+            None => {
+                msg.reply(ctx, "Unable to get balance").await?; 
+            }
+        },
+        Err(_) => {
+            msg.reply(ctx, "Unable to get balance").await?;
+        }
+    };
+
+    Ok(())
 }
