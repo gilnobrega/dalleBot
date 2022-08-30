@@ -1,9 +1,6 @@
 mod dalle;
 
 use std::env;
-
-use serde_json::json;
-use serde_json::Value;
 use serenity::async_trait;
 use serenity::framework::standard::macros::{command, group};
 use serenity::framework::standard::Args;
@@ -54,38 +51,38 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn text2img(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    if msg.author.id.0 == 835342160370728970 {
-        let dalle_token = env::var("DALLE_TOKEN").expect("token");
+    //if msg.author.id.0 == 835342160370728970 {
+    let dalle_token = env::var("DALLE_TOKEN").expect("token");
 
-        let response = &crate::dalle::text2img(args.message(), &dalle_token).await;
+    let response = &crate::dalle::text2img(args.message(), &dalle_token).await;
 
-        let downloads = download_response_image(response).await;
+    let downloads = download_response_image(response).await;
 
-        for download in downloads {
-            let f = [(&download[..], "image.png")];
+    for download in downloads {
+        let f = [(&download[..], "image.png")];
 
-            msg.channel_id
-                .send_message(&ctx.http, |m| {
-                    // Reply to the given message
-                    m.reference_message(msg);
+        msg.channel_id
+            .send_message(&ctx.http, |m| {
+                // Reply to the given message
+                m.reference_message(msg);
 
-                    // Ping the replied user
-                    m.allowed_mentions(|am| {
-                        am.replied_user(true);
-                        am
-                    });
+                // Ping the replied user
+                m.allowed_mentions(|am| {
+                    am.replied_user(true);
+                    am
+                });
 
-                    // Attach image
-                    m.files(f);
+                // Attach image
+                m.files(f);
 
-                    m
-                })
-                .await?;
-        }
-    } else {
-        msg.reply(&ctx.http, "You do not have permission to use this command")
+                m
+            })
             .await?;
     }
+    // } else {
+    //     msg.reply(&ctx.http, "You do not have permission to use this command")
+    //         .await?;
+    //  }
 
     Ok({})
 }
