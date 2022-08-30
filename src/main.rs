@@ -7,10 +7,11 @@ use serenity::framework::standard::macros::{command, group};
 use serenity::framework::standard::Args;
 use serenity::framework::standard::{CommandResult, StandardFramework};
 use serenity::model::channel::Message;
+use serenity::model::prelude::AttachmentType;
 use serenity::prelude::*;
 use std::env;
 
-use crate::dalle_api::{get_response_image_urls};
+use crate::dalle_api::get_response_image_urls;
 
 #[group]
 #[commands(text2img, ping, credits)]
@@ -58,7 +59,9 @@ async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
 
     match &crate::dalle_api::text2img(args.message(), &dalle_token).await {
         Ok(response) => {
-            msg.delete_reaction_emoji(&ctx.http, thinking_reaction).await.unwrap();
+            msg.delete_reaction_emoji(&ctx.http, thinking_reaction)
+                .await
+                .unwrap();
 
             download_and_send_images(response, ctx, msg).await;
 
@@ -73,7 +76,6 @@ async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
         }
     };
 
-
     Ok({})
 }
 
@@ -81,57 +83,64 @@ async fn download_and_send_images(response: &Value, ctx: &Context, msg: &Message
     let urls = get_response_image_urls(response).await;
 
     let emojis = ['🌑', '🌘', '🌗', '🌖', '🌕'];
-    
+
     msg.react(&ctx.http, emojis[0]).await.unwrap();
 
+    let mut files = Vec::new();
+
     for (i, url) in urls.iter().enumerate() {
-
         let download = reqwest::get(url).await.unwrap().bytes().await.unwrap();
-        msg.delete_reaction_emoji(&ctx.http, emojis[i]).await.unwrap();
-        msg.react(&ctx.http, emojis[i+1]).await.unwrap();
+        msg.delete_reaction_emoji(&ctx.http, emojis[i])
+            .await
+            .unwrap();
+        msg.react(&ctx.http, emojis[i + 1]).await.unwrap();
 
-        let f = [(&download[..], "image.png")];
-
-        msg.channel_id
-            .send_message(&ctx.http, |m| {
-                // Reply to the given message
-                m.reference_message(msg);
-
-                // Ping the replied user
-                m.allowed_mentions(|am| {
-                    am.replied_user(true);
-                    am
-                });
-
-                // Attach image
-                m.files(f);
-
-                m
-            })
-            .await.unwrap();
-        
+        let f = download;
+        files.push(f);
     }
 
-    msg.delete_reaction_emoji(&ctx.http, emojis[4]).await.unwrap();
+    msg.channel_id
+        .send_message(&ctx.http, |m| {
+            // Reply to the given message
+            m.reference_message(msg);
+
+            // Ping the replied user
+            m.allowed_mentions(|am| {
+                am.replied_user(true);
+                am
+            });
+
+            for (i, file) in files.iter().enumerate() {
+                m.add_file(AttachmentType::Bytes { data: std::borrow::Cow::Borrowed(file), filename: format!("{}.webp", i) });
+            }
+
+            m
+        })
+        .await
+        .unwrap();
+
+    msg.delete_reaction_emoji(&ctx.http, emojis[4])
+        .await
+        .unwrap();
 }
 
 #[command]
-async fn credits(ctx: &Context, msg: &Message) -> CommandResult
-{
+async fn credits(ctx: &Context, msg: &Message) -> CommandResult {
     let dalle_token = env::var("DALLE_TOKEN").expect("token");
+
+    let mut output = "Unable to get balance".to_string();
+
     match get_credits(&dalle_token).await {
         Ok(val) => match val {
             Some(val) => {
-                msg.reply(ctx, format!("{} credits left", val)).await.unwrap();
+                output = format!("{} credits left", val);
             }
-            None => {
-                msg.reply(ctx, "Unable to get balance").await?; 
-            }
+            None => {}
         },
-        Err(_) => {
-            msg.reply(ctx, "Unable to get balance").await?;
-        }
+        Err(_) => {}
     };
+
+    msg.reply(&ctx.http, output).await.unwrap();
 
     Ok(())
 }

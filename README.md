@@ -25,6 +25,11 @@ A discord bot that generates DALLE2 images from text prompts
 #### Output
 <img src="https://user-images.githubusercontent.com/82336674/187337782-726d54d2-58b5-4cd0-bdf6-de986c658d81.png" width="256" height="256">
 
+`~credits`
+
+#### Output
+`84 credits left`
+
 ## Acknowledgements
 [Dall-E](https://openai.com/dall-e-2/) for image generation
 
