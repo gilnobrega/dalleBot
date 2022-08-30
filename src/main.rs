@@ -133,7 +133,8 @@ async fn credits(ctx: &Context, msg: &Message) -> CommandResult {
     match get_credits(&dalle_token).await {
         Ok(val) => match val {
             Some(val) => {
-                output = format!("{} credits left", val);
+                let price = (18 as f64/ 115 as f64) * val as f64;
+                output = format!("{0} credits left (approx ${1:.2})", val, price);
             }
             None => {}
         },
