@@ -1,12 +1,12 @@
 mod dalle;
 
-use std::env;
 use serenity::async_trait;
 use serenity::framework::standard::macros::{command, group};
 use serenity::framework::standard::Args;
 use serenity::framework::standard::{CommandResult, StandardFramework};
 use serenity::model::channel::Message;
 use serenity::prelude::*;
+use std::env;
 
 use crate::dalle::download_response_image;
 
@@ -51,38 +51,42 @@ async fn ping(ctx: &Context, msg: &Message) -> CommandResult {
 
 #[command]
 async fn text2img(ctx: &Context, msg: &Message, mut args: Args) -> CommandResult {
-    //if msg.author.id.0 == 835342160370728970 {
     let dalle_token = env::var("DALLE_TOKEN").expect("token");
 
-    let response = &crate::dalle::text2img(args.message(), &dalle_token).await;
+    match &crate::dalle::text2img(args.message(), &dalle_token).await {
+        Ok(response) => {
+            let downloads = download_response_image(response).await;
 
-    let downloads = download_response_image(response).await;
+            for download in downloads {
+                let f = [(&download[..], "image.png")];
 
-    for download in downloads {
-        let f = [(&download[..], "image.png")];
+                msg.channel_id
+                    .send_message(&ctx.http, |m| {
+                        // Reply to the given message
+                        m.reference_message(msg);
 
-        msg.channel_id
-            .send_message(&ctx.http, |m| {
-                // Reply to the given message
-                m.reference_message(msg);
+                        // Ping the replied user
+                        m.allowed_mentions(|am| {
+                            am.replied_user(true);
+                            am
+                        });
 
-                // Ping the replied user
-                m.allowed_mentions(|am| {
-                    am.replied_user(true);
-                    am
-                });
+                        // Attach image
+                        m.files(f);
 
-                // Attach image
-                m.files(f);
-
-                m
-            })
+                        m
+                    })
+                    .await?;
+            }
+        }
+        Err(e) => {
+            msg.reply(
+                &ctx.http,
+                "Your task failed as a result of our safety system.",
+            )
             .await?;
-    }
-    // } else {
-    //     msg.reply(&ctx.http, "You do not have permission to use this command")
-    //         .await?;
-    //  }
+        }
+    };
 
     Ok({})
 }
