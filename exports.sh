@@ -1,2 +1,2 @@
-export DISCORD_TOKEN=
-export DALLE_TOKEN=
+export DISCORD_TOKEN=xxxxxxxxxxxxxxxxxxxxxxxxxx.xxxxxx.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export DALLE_TOKEN=sess-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
