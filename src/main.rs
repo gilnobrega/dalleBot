@@ -1,6 +1,7 @@
 mod dalle_api;
 
 use dalle_api::get_credits;
+use image::{ImageBuffer, imageops, RgbaImage};
 use serde_json::Value;
 use serenity::async_trait;
 use serenity::framework::standard::macros::{command, group};
@@ -10,11 +11,13 @@ use serenity::model::channel::Message;
 use serenity::model::prelude::AttachmentType;
 use serenity::prelude::*;
 use std::env;
+use std::fs::File;
+use std::io::{Read, BufReader};
 
-use crate::dalle_api::get_response_image_urls;
+use crate::dalle_api::{get_response_image_urls, inpainting};
 
 #[group]
-#[commands(text2img, ping, credits)]
+#[commands(text2img, ping, credits, extendimg)]
 struct General;
 
 struct Handler;
@@ -66,7 +69,7 @@ async fn text2img(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
             download_and_send_images(response, ctx, msg).await;
 
             let fut1 = msg.react(&ctx.http, '🟢');
-            let fut2 = credits(&ctx, &msg, args);
+            let fut2 = credits(&ctx, &mut &mut &msg, args);
             (fut1.await.unwrap(), fut2.await.unwrap());
         }
         Err(_) => {
@@ -143,5 +146,74 @@ async fn credits(ctx: &Context, msg: &Message) -> CommandResult {
 
     msg.reply(&ctx.http, output).await.unwrap();
 
+    Ok(())
+}
+
+#[command]
+async fn extendimg(ctx: &Context, msg: &Message, args: Args) -> CommandResult {
+    let dalle_token = env::var("DALLE_TOKEN").expect("token");
+    let thinking_reaction = '🤔';
+    msg.react(&ctx.http, thinking_reaction).await.unwrap();
+
+    if msg.attachments.len() == 1
+    {
+        let uploaded_img = msg.attachments.first().unwrap();
+
+        let uploaded_img_content = uploaded_img.download().await.unwrap();
+        
+        let mut dynimg = image::load_from_memory(&uploaded_img_content[..]).unwrap().resize_to_fill(512, 512, imageops::FilterType::Gaussian);
+        let mut newimg: RgbaImage = ImageBuffer::new(1024, 1024);
+
+         match dynimg.as_mut_rgba8() {
+            //if alpha layer
+            Some(img) => {
+                for (x, y, pixel) in img.enumerate_pixels_mut() {
+                    *newimg.get_pixel_mut(x + 256, y + 256) = image::Rgba([pixel[0], pixel[1], pixel[2], pixel[3]]);
+                }
+            },
+            //if no alpha layer
+            None => {
+                let img = dynimg.as_mut_rgb8().unwrap();
+
+                for (x, y, pixel) in img.enumerate_pixels_mut() {
+                    *newimg.get_pixel_mut(x + 256, y + 256) = image::Rgba([pixel[0], pixel[1], pixel[2], 255]);
+                }
+            }
+            ,
+        };
+
+        newimg.save_with_format("../inpainting.png", image::ImageFormat::Png);
+
+        let f = File::open("../inpainting.png")?;
+        let mut reader = BufReader::new(f);
+        let mut buffer = Vec::new();
+        
+        // Read file into vector.
+        reader.read_to_end(&mut buffer)?;
+
+        match inpainting(args.message(), &buffer[..], &dalle_token).await {
+            Ok(response) => {
+                msg.delete_reaction_emoji(&ctx.http, thinking_reaction)
+                .await
+                .unwrap();
+
+                download_and_send_images(&response, ctx, msg).await;
+
+                let fut1 = msg.react(&ctx.http, '🟢');
+                let fut2 = credits(&ctx, &mut &mut &msg, args);
+                (fut1.await.unwrap(), fut2.await.unwrap());
+            }
+            Err(_) => {
+                let fut1 = msg.delete_reaction_emoji(&ctx.http, thinking_reaction);
+                let fut2 = msg.react(&ctx.http, '🔴');
+                (fut1.await.unwrap(), fut2.await.unwrap());
+            }
+        };
+
+    }
+    else {
+        msg.delete_reaction_emoji(&ctx.http, thinking_reaction).await.unwrap();
+        msg.react(&ctx.http, '🔴').await.unwrap();
+    }
     Ok(())
 }

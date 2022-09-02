@@ -1,5 +1,6 @@
 use core::time;
 use std::thread;
+use base64::encode;
 use reqwest::{
     self,
     header::{AUTHORIZATION, CONTENT_TYPE},
@@ -9,7 +10,18 @@ use serde_json::{json, Value};
 static DALLE_API_URL_TASKS: &str = "https://labs.openai.com/api/labs/tasks";
 static DALLE_API_URL_CREDIT_SUMMARY: &str = "https://labs.openai.com/api/labs/billing/credit_summary";
 
-fn inpainting() {}
+pub async fn inpainting(caption: &str, image: &[u8], dalle_token: &str) -> Result<Value, ()> {
+    let prompt = json!({
+        "caption": caption,
+        "batch_size": 4,
+        "image": encode(image),
+        "masked_image": encode(image)
+    });
+
+    let resp = get_task_response(dalle_token, "inpainting", &prompt).await;
+
+    resp
+}
 
 pub async fn text2img(caption: &str, dalle_token: &str) -> Result<Value, ()> {
     let prompt = json!({
@@ -44,6 +56,8 @@ async fn get_task_response<'a>(
         .text()
         .await
         .unwrap();
+
+    println!("Response is {}", resp_string);
 
     let resp_json: Value = serde_json::from_str(&resp_string).unwrap();
 
